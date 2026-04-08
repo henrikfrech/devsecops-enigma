@@ -4,16 +4,14 @@ const fs = require("fs");
 
 const app = express();
 app.use(express.json());
+mongoose.set("strictQuery", true);
 
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
   throw new Error("MONGO_URI is not set");
 }
 
-mongoose.connect(mongoUri, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+mongoose.connect(mongoUri);
 
 const Item = mongoose.model("Item", new mongoose.Schema({
   name: { type: String, required: true }

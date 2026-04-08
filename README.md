@@ -172,6 +172,178 @@ Use the EXTERNAL-IP from the ingress to access the application.
 
 ---
 
+## Manual GCP Operations (Knowledge Retention)
+
+Use this section as a quick reference when you want to operate the environment manually without `just` commands.
+
+### 1. Set project context
+
+```bash
+export GCP_PROJECT_ID="project-b4952354-c0d7-4e0a-a90"
+export GCP_REGION="europe-west3"
+export GCP_ZONE="${GCP_REGION}-a"
+
+gcloud auth login
+gcloud config set project "$GCP_PROJECT_ID"
+gcloud auth application-default login
+```
+
+### 2. Enable required APIs
+
+```bash
+gcloud services enable \
+	compute.googleapis.com \
+	container.googleapis.com \
+	artifactregistry.googleapis.com \
+	cloudbuild.googleapis.com \
+	storage.googleapis.com
+```
+
+### 3. Artifact Registry (container images)
+
+Check repositories:
+
+```bash
+gcloud artifacts repositories list --location "$GCP_REGION"
+```
+
+Create repo (if missing):
+
+```bash
+gcloud artifacts repositories create wiz-app \
+	--repository-format docker \
+	--location "$GCP_REGION" \
+	--description "Wiz app images"
+```
+
+List images/tags:
+
+```bash
+gcloud artifacts docker images list \
+	"$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/wiz-app" \
+	--include-tags
+```
+
+### 4. Build and push image manually
+
+Preferred in this environment (no local Docker daemon required):
+
+```bash
+gcloud builds submit app \
+	--tag "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/wiz-app/app:latest" \
+	--project "$GCP_PROJECT_ID"
+```
+
+If Docker is available locally:
+
+```bash
+gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev"
+docker build -t app-local:latest ./app
+docker tag app-local:latest "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/wiz-app/app:latest"
+docker push "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/wiz-app/app:latest"
+```
+
+### 5. GKE manual access and checks
+
+Get cluster credentials:
+
+```bash
+gcloud container clusters get-credentials wiz-gke \
+	--zone "$GCP_ZONE" \
+	--project "$GCP_PROJECT_ID"
+```
+
+Verify cluster and workloads:
+
+```bash
+kubectl get nodes
+kubectl get ns
+kubectl -n wiz-app get deploy,svc,ingress,pods
+kubectl -n argocd get application wiz-app
+```
+
+### 6. Argo CD manual operations
+
+Force refresh and check sync/health:
+
+```bash
+kubectl -n argocd annotate application wiz-app argocd.argoproj.io/refresh=hard --overwrite
+kubectl -n argocd get application wiz-app -o jsonpath='{.status.sync.status}{" | "}{.status.health.status}{"\n"}'
+```
+
+Port-forward Argo UI:
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+### 7. VM manual operations (Mongo host)
+
+SSH into the VM:
+
+```bash
+gcloud compute ssh mongo-vm --zone "$GCP_ZONE" --project "$GCP_PROJECT_ID"
+```
+
+On VM: validate MongoDB service and listener:
+
+```bash
+sudo systemctl status mongodb --no-pager
+sudo ss -ltnp | grep 27017
+```
+
+On VM: verify app user login:
+
+```bash
+mongo admin -u appuser -p 'change-me' --authenticationDatabase admin --eval 'db.runCommand({ping:1})'
+```
+
+### 8. Storage and backups (GCS)
+
+List backup bucket objects:
+
+```bash
+gcloud storage ls "gs://$GCP_PROJECT_ID-mongo-backups"
+```
+
+Check bucket IAM/public exposure:
+
+```bash
+gcloud storage buckets get-iam-policy "gs://$GCP_PROJECT_ID-mongo-backups"
+```
+
+### 9. Fast troubleshooting commands
+
+Application logs:
+
+```bash
+kubectl -n wiz-app logs deploy/wiz-app --tail=200
+```
+
+Restart app rollout:
+
+```bash
+kubectl -n wiz-app rollout restart deployment wiz-app
+kubectl -n wiz-app rollout status deployment wiz-app --timeout=180s
+```
+
+Connectivity from pod to Mongo:
+
+```bash
+POD=$(kubectl -n wiz-app get pods -l app=wiz-app -o jsonpath='{.items[0].metadata.name}')
+kubectl -n wiz-app exec "$POD" -- nc -vz 10.0.0.26 27017
+```
+
+Rebuild image and redeploy in one flow:
+
+```bash
+gcloud builds submit app --tag "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/wiz-app/app:latest"
+kubectl -n wiz-app rollout restart deployment wiz-app
+```
+
+---
+
 ## Application Validation
 
 ### Verify container file
