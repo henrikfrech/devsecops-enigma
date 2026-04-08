@@ -39,6 +39,7 @@ jobs:
         with:
           scan-type: config
           scan-ref: infra
+          trivyignores: .trivyignore
           severity: HIGH,CRITICAL
           exit-code: 1
 

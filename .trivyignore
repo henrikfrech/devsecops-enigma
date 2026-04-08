@@ -1,0 +1,6 @@
+# Intentional insecure configurations for Wiz exercise demo environment.
+# These are expected findings and documented in README Security Misconfigurations.
+GCP-0001
+GCP-0031
+GCP-0048
+GCP-0053
