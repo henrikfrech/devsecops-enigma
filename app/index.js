@@ -10,7 +10,10 @@ if (!mongoUri) {
   throw new Error("MONGO_URI is not set");
 }
 
-mongoose.connect(mongoUri);
+mongoose.connect(mongoUri, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
 const Item = mongoose.model("Item", new mongoose.Schema({
   name: { type: String, required: true }

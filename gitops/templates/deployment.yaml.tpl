@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: wiz-app
   namespace: wiz-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
   labels:
     app: wiz-app
 spec:

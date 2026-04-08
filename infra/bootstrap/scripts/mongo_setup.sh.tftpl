@@ -8,10 +8,55 @@ RETENTION_DAYS=${retention_days}
 
 trap 'echo "[ERROR] Backup failed at line $LINENO" >&2' ERR
 
+echo "[INFO] Installing MongoDB server and tools from Ubuntu repositories..."
+apt-get update
+apt-get install -y mongodb-server mongodb-clients mongo-tools
+
+if [[ -f /etc/mongodb.conf ]]; then
+  sed -i 's/^bind_ip.*/bind_ip = 0.0.0.0/' /etc/mongodb.conf || true
+  if grep -q '^auth' /etc/mongodb.conf; then
+    sed -i 's/^auth.*/auth = true/' /etc/mongodb.conf
+  else
+    echo 'auth = true' >> /etc/mongodb.conf
+  fi
+fi
+
+if [[ -f /etc/mongod.conf ]]; then
+  sed -i 's/^\s*bindIp:.*/  bindIp: 0.0.0.0/' /etc/mongod.conf || true
+  if ! grep -q '^security:' /etc/mongod.conf; then
+    cat >>/etc/mongod.conf <<'EOF'
+security:
+  authorization: enabled
+EOF
+  elif ! grep -q 'authorization: enabled' /etc/mongod.conf; then
+    sed -i '/^security:/a\  authorization: enabled' /etc/mongod.conf
+  fi
+fi
+
+systemctl daemon-reload
+if systemctl list-unit-files | grep -q '^mongod.service'; then
+  systemctl enable --now mongod
+else
+  systemctl enable --now mongodb
+fi
+
+echo "[INFO] Waiting for MongoDB to accept connections..."
+for _ in $(seq 1 30); do
+  if ss -ltn | grep -q ':27017'; then
+    break
+  fi
+  sleep 2
+done
+
+if ! mongo admin --quiet --eval 'db.getUser("${mongo_username}")' | grep -q '"user"'; then
+  echo "[INFO] Creating MongoDB app user..."
+  mongo admin --eval 'db.createUser({user:"${mongo_username}",pwd:"${mongo_password}",roles:[{role:"readWrite",db:"${mongo_db_name}"}]})'
+fi
+
 if ! command -v mongodump &> /dev/null; then
-  echo "[INFO] Installing MongoDB 4.2 client tools..."
+  echo "[INFO] Installing MongoDB client tools..."
   apt-get update
-  apt-get install -y mongodb-org-tools=4.2.24
+  apt-get install -y mongo-tools
 fi
 
 echo "[INFO] Starting backup: $OBJECT_NAME"

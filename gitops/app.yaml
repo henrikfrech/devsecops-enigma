@@ -13,6 +13,8 @@ spec:
     targetRevision: HEAD
     path: gitops/rendered
   syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
     automated:
       prune: true
       selfHeal: true

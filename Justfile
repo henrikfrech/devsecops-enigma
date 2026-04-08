@@ -127,9 +127,14 @@ argo:
       --timeout 15m \
       --wait; \
   fi
+  # Apply base resources (namespace, service account, rbac, service)
+  kubectl apply -f gitops/rendered/namespace.yaml
+  kubectl apply -f gitops/rendered/serviceaccount.yaml
+  kubectl apply -f gitops/rendered/rbac.yaml
+  kubectl apply -f gitops/rendered/service.yaml
+  # Apply Argo Application
   kubectl apply -f gitops/app.yaml
 
-# Forward ArgoCD to localhost
 argocd-forward:
   @echo "Argo CD: https://localhost:8080"
   @echo "Username: admin"
@@ -148,6 +153,11 @@ argo-destroy:
 # Render the Kubernetes manifests with environment variables
 render:
   mkdir -p gitops/rendered
+  # Copy base resources (namespace, service account, rbac, service)
+  cp gitops/base/namespace.yaml gitops/rendered/
+  cp gitops/base/serviceaccount.yaml gitops/rendered/
+  cp gitops/base/rbac.yaml gitops/rendered/
+  cp gitops/base/service.yaml gitops/rendered/
   terraform -chdir={{bootstrap_dir}} output -raw mongo_private_ip > /tmp/mongo_ip
   MONGO_PRIVATE_IP=$(cat /tmp/mongo_ip) \
   DOMAIN="${APP_DOMAIN:-}" \
