@@ -39,7 +39,7 @@ jobs:
         with:
           scan-type: config
           scan-ref: infra
-          trivyignores: .trivyignore
+          args: --skip-checks GCP-0001,GCP-0031,GCP-0048,GCP-0053
           severity: HIGH,CRITICAL
           exit-code: 1
 
