@@ -22,6 +22,8 @@ spec:
         - name: app
           image: ${IMAGE}
           imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - containerPort: 3000
           env:
