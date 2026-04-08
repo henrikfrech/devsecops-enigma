@@ -29,15 +29,16 @@ tfplan
 application_default_credentials.json
 gcloud/
 
-# ── Rendered GitOps manifests (generated — not source of truth) ───────────────
-gitops/rendered/
-
 # ── Attack output (contains real credentials and scan results) ────────────────
 attack-output/
 
 # ── Temporary files from Justfile targets ─────────────────────────────────────
 /tmp/mongo_ip
 /tmp/cluster_name
+/tmp/argocd-values-secret.yaml
+
+# ── Argo CD secret values (plaintext should never be committed) ─────────────
+gitops/rendered/argocd-values-secret.yaml
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 .docker/

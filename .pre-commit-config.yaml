@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v4.5.0
     hooks:
       - id: check-merge-conflict
       - id: end-of-file-fixer
@@ -10,17 +10,17 @@ repos:
       - id: check-json
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.24.2
+    rev: v8.18.2
     hooks:
       - id: gitleaks
 
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.96.0
+    rev: v1.95.0
     hooks:
       - id: terraform_fmt
 
   - repo: https://github.com/returntocorp/semgrep
-    rev: v1.75.0
+    rev: v1.70.0
     hooks:
       - id: semgrep
-        args: ["--config", "p/owasp-top-ten"]
+        args: ["--config=p/owasp-top-ten"]

@@ -74,6 +74,38 @@ if ! command -v just &>/dev/null; then
   curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 fi
 
+# ── sops (Secret Operations) ──────────────────────────────────────────────────
+if ! command -v sops &>/dev/null; then
+  echo "[setup] Installing sops..."
+  SOPS_VERSION="3.8.1"
+  if [[ "$ARCH" == "amd64" ]]; then
+    SOPS_ARCH="amd64"
+  else
+    SOPS_ARCH="arm64"
+  fi
+  curl -fsSL "https://github.com/mozilla/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.${SOPS_ARCH}" \
+    -o sops
+  chmod +x sops
+  mv sops /usr/local/bin/
+fi
+
+# ── age (encryption for SOPS) ────────────────────────────────────────────────
+if ! command -v age-keygen &>/dev/null; then
+  echo "[setup] Installing age..."
+  AGE_VERSION="1.1.1"
+  if [[ "$ARCH" == "amd64" ]]; then
+    AGE_ARCH="amd64"
+  else
+    AGE_ARCH="arm64"
+  fi
+  cd /tmp
+  curl -fsSL "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-${AGE_ARCH}.tar.gz" \
+    | tar -xz
+  mv age/age age/age-keygen /usr/local/bin/
+  rm -rf age
+  cd - >/dev/null
+fi
+
 # ── mongosh ───────────────────────────────────────────────────────────────────
 if ! command -v mongosh &>/dev/null; then
   echo "[setup] Installing mongosh..."
@@ -132,6 +164,8 @@ echo "  kubectl   : $(kubectl version --client --short 2>/dev/null || true)"
 echo "  helm      : $(helm version --short 2>/dev/null || true)"
 echo "  just      : $(just --version)"
 echo "  pre-commit: $(pre-commit --version)"
+echo "  sops      : $(sops --version 2>&1 | head -1)"
+echo "  age       : $(age --version)"
 echo "  mongosh   : $(mongosh --version | head -1)"
 echo "  jq        : $(jq --version)"
 echo "  nmap      : $(nmap --version | head -1)"

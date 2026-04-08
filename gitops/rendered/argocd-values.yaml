@@ -1,12 +1,12 @@
 global:
-  domain: ${ARGOCD_HOSTNAME}
+  domain: argocd.local
 
 configs:
   params:
     server:
       insecure: true
   cm:
-    url: https://${ARGOCD_HOSTNAME}
+    url: https://argocd.local
     dex.config: |
       connectors:
         - type: oidc
@@ -14,15 +14,15 @@ configs:
           name: Google
           config:
             issuer: https://accounts.google.com
-            clientID: ${GOOGLE_OIDC_CLIENT_ID}
-            clientSecret: $dex.google.clientSecret
+            clientID: 521508938945-dj28j3b88mgc2et8tegcvt0pt4chq4kf.apps.googleusercontent.com
+            clientSecret: .google.clientSecret
             hostedDomains:
-              - ${GOOGLE_WORKSPACE_DOMAIN}
+              - https://project-b4952354-c0d7-4e0a-a90.firebaseapp.com/__/auth/handler
 
   rbac:
     policy.default: role:readonly
     policy.csv: |
-      g, ${ARGOCD_ADMIN_GROUP}, role:admin
+      g, argocd-admins@example.com, role:admin
 
 server:
   service:

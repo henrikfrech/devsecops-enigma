@@ -109,12 +109,24 @@ argo:
     --project=$GCP_PROJECT_ID
   helm repo add argo https://argoproj.github.io/argo-helm
   helm repo update
-  helm upgrade --install argocd argo/argo-cd \
-    -n argocd \
-    --create-namespace \
-    -f gitops/rendered/argocd-values.yaml \
-    --timeout 15m \
-    --wait
+  if [[ -f gitops/rendered/argocd-values-secret.sops.yaml ]]; then \
+    sops -d gitops/rendered/argocd-values-secret.sops.yaml > /tmp/argocd-values-secret.yaml; \
+    helm upgrade --install argocd argo/argo-cd \
+      -n argocd \
+      --create-namespace \
+      -f gitops/rendered/argocd-values.yaml \
+      -f /tmp/argocd-values-secret.yaml \
+      --timeout 15m \
+      --wait; \
+    rm -f /tmp/argocd-values-secret.yaml; \
+  else \
+    helm upgrade --install argocd argo/argo-cd \
+      -n argocd \
+      --create-namespace \
+      -f gitops/rendered/argocd-values.yaml \
+      --timeout 15m \
+      --wait; \
+  fi
   kubectl apply -f gitops/app.yaml
 
 # Forward ArgoCD to localhost
@@ -153,4 +165,11 @@ render:
     envsubst < gitops/templates/ingress.yaml.tpl > gitops/rendered/ingress.yaml && \
     envsubst < gitops/templates/secret.yaml.tpl > gitops/rendered/secret.yaml && \
     envsubst < gitops/templates/values.yaml.tpl > gitops/rendered/argocd-values.yaml && \
+    if [[ -n "${SOPS_AGE_RECIPIENT:-}" ]] && command -v sops >/dev/null 2>&1; then \
+      envsubst < gitops/templates/values-secret.yaml.tpl > /tmp/argocd-values-secret.yaml && \
+      sops --encrypt --age "${SOPS_AGE_RECIPIENT}" /tmp/argocd-values-secret.yaml > gitops/rendered/argocd-values-secret.sops.yaml && \
+      rm -f /tmp/argocd-values-secret.yaml; \
+    else \
+      echo "[render] Skipping encrypted Argo secret values (set SOPS_AGE_RECIPIENT and install sops)."; \
+    fi && \
     echo "Rendered manifests written to gitops/rendered/"'
