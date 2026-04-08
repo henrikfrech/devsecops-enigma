@@ -1,0 +1,119 @@
+name: app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "gitops/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  app-security-preflight:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm install
+
+      - name: NPM audit (high and critical)
+        working-directory: app
+        run: npm audit --audit-level=high
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+      - name: Semgrep SAST scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/owasp-top-ten
+
+      - name: Gitleaks secret scan
+        uses: zricethezav/gitleaks-action@v2
+
+  build-and-push:
+    needs: [app-security-preflight]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build image
+        run: |
+          docker build \
+            -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }} \
+            -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest \
+            ./app
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-sbom-${{ github.sha }}
+          path: sbom.spdx.json
+          if-no-files-found: error
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+      - name: Push image
+        run: |
+          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
+          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest
+      - name: Get Terraform outputs
+        id: tf
+        run: |
+          cd infra
+          terraform output -json > tf.json
+          echo "mongo_ip=$(jq -r .mongo_private_ip.value tf.json)" >> $GITHUB_OUTPUT
+
+      - name: Render manifests
+        run: |
+          export MONGO_PRIVATE_IP=${{ steps.tf.outputs.mongo_ip }}
+          export DOMAIN=${{ secrets.APP_DOMAIN }}
+          export IMAGE=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
+          export MONGO_USERNAME=${{ secrets.MONGO_USERNAME }}
+          export MONGO_PASSWORD=${{ secrets.MONGO_PASSWORD }}
+          export MONGO_DB=${{ secrets.MONGO_DB }}
+
+          envsubst < gitops/templates/secret.yaml.tpl > gitops/rendered/secret.yaml
+          envsubst < gitops/templates/deployment.yaml.tpl > gitops/rendered/deployment.yaml

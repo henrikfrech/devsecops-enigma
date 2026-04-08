@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wiz-app
+  namespace: wiz-app
+spec:
+  selector:
+    app: wiz-app
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: ClusterIP

@@ -1,0 +1,40 @@
+{
+  "name": "wiz-gcp-gitops-lab",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "remoteUser": "root",
+
+  "features": {
+    "ghcr.io/devcontainers/features/terraform:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "version": "latest",
+      "helm": "latest",
+      "minikube": "none"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.terraform",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "timonwong.shellcheck",
+        "foxundermoon.shell-format"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "[terraform]": {
+            "editor.formatOnSave": true
+          },
+          "terraform.languageServer": {
+            "external": true,
+            "command": "tofu",
+            "args": ["fmt", "-"]
+          }
+      }
+    }
+  }
+}

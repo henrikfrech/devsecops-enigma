@@ -1,0 +1,40 @@
+#!/bin/bash
+set -euo pipefail
+
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+OBJECT_NAME="mongodb-backup-$TIMESTAMP.archive.gz"
+BUCKET="gs://${bucket_name}"
+RETENTION_DAYS=${retention_days}
+
+trap 'echo "[ERROR] Backup failed at line $LINENO" >&2' ERR
+
+if ! command -v mongodump &> /dev/null; then
+  echo "[INFO] Installing MongoDB 4.2 client tools..."
+  apt-get update
+  apt-get install -y mongodb-org-tools=4.2.24
+fi
+
+echo "[INFO] Starting backup: $OBJECT_NAME"
+
+mongodump \
+  --username="${mongo_username}" \
+  --password="${mongo_password}" \
+  --authenticationDatabase=admin \
+  --db="${mongo_db_name}" \
+  --gzip \
+  --archive \
+| gcloud storage cp - "$BUCKET/$OBJECT_NAME"
+
+echo "[INFO] Backup uploaded: $BUCKET/$OBJECT_NAME"
+
+gcloud storage ls "$BUCKET/mongodb-backup-*.archive.gz" \
+  | while read -r obj; do
+      obj_date=$(echo "$obj" | sed -E 's/.*([0-9]{8}).*/\1/')
+      cutoff=$(date -d "-$RETENTION_DAYS days" +%Y%m%d)
+      if [[ "$obj_date" < "$cutoff" ]]; then
+        gcloud storage rm "$obj"
+        echo "[INFO] Deleted old backup: $obj"
+      fi
+    done
+
+echo "[INFO] Done."

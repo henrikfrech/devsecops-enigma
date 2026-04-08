@@ -1,0 +1,84 @@
+name: infra
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform format check
+        run: terraform -chdir=infra/bootstrap fmt -check -recursive
+
+      - name: Terraform init and validate (bootstrap)
+        run: |
+          terraform -chdir=infra/bootstrap init -backend=false
+          terraform -chdir=infra/bootstrap validate
+
+  iac-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy IaC scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: config
+          scan-ref: infra
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+  terraform-render:
+    needs: [terraform-validate, iac-scan]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_TERRAFORM_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Terraform Init (for outputs)
+        run: terraform -chdir=infra/bootstrap init
+
+      - name: Get Terraform outputs
+        id: tf
+        run: |
+          terraform -chdir=infra/bootstrap output -json > tf.json
+          echo "MONGO_PRIVATE_IP=$(jq -r .mongo_private_ip.value tf.json)" >> $GITHUB_ENV
+
+      - name: Set image
+        run: |
+          echo "IMAGE=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest" >> $GITHUB_ENV
+
+      - name: Render manifests
+        run: |
+          export MONGO_PRIVATE_IP=$MONGO_PRIVATE_IP
+          export DOMAIN=${{ secrets.APP_DOMAIN }}
+          export MONGO_USERNAME=${{ secrets.MONGO_USERNAME }}
+          export MONGO_PASSWORD=${{ secrets.MONGO_PASSWORD }}
+          export MONGO_DB=${{ secrets.MONGO_DB }}
+
+          envsubst < gitops/templates/secret.yaml.tpl > gitops/rendered/secret.yaml
+          envsubst < gitops/templates/deployment.yaml.tpl > gitops/rendered/deployment.yaml

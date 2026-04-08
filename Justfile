@@ -1,0 +1,156 @@
+set dotenv-load := true
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+bootstrap_dir := "infra/bootstrap"
+bucket := env_var("GCP_PROJECT_ID") + "-tf-state"
+
+# List all Just commands
+default:
+  @just --list
+
+# Use GCP Login
+auth:
+  gcloud auth login
+  gcloud auth application-default login
+  gcloud config set project $GCP_PROJECT_ID
+
+# Import all existing GCP resources back into Terraform state
+import-bootstrap:
+  terraform -chdir={{bootstrap_dir}} init
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_compute_network.vpc \
+    projects/$GCP_PROJECT_ID/global/networks/wiz-vpc || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_compute_subnetwork.subnet \
+    projects/$GCP_PROJECT_ID/regions/$GCP_REGION/subnetworks/wiz-subnet || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_compute_firewall.allow_ssh_public \
+    projects/$GCP_PROJECT_ID/global/firewalls/allow-ssh-public || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_compute_firewall.allow_mongo_from_gke \
+    projects/$GCP_PROJECT_ID/global/firewalls/allow-mongo-from-gke || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_service_account.mongo_vm \
+    projects/$GCP_PROJECT_ID/serviceAccounts/mongo-vm-sa@$GCP_PROJECT_ID.iam.gserviceaccount.com || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_artifact_registry_repository.docker_repo \
+    projects/$GCP_PROJECT_ID/locations/$GCP_REGION/repositories/wiz-app || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_storage_bucket.backup \
+    $GCP_PROJECT_ID-mongo-backups || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_compute_instance.mongo_vm \
+    projects/$GCP_PROJECT_ID/zones/$GCP_REGION-a/instances/mongo-vm || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_container_cluster.gke \
+    projects/$GCP_PROJECT_ID/locations/$GCP_REGION-a/clusters/wiz-gke || true
+
+  terraform -chdir={{bootstrap_dir}} import \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    google_container_node_pool.primary_nodes \
+    projects/$GCP_PROJECT_ID/locations/$GCP_REGION-a/clusters/wiz-gke/nodePools/primary-node-pool || true
+
+# Bootstrap GCP Infra
+bootstrap:
+  gcloud storage buckets describe gs://{{bucket}} \
+    --project=$GCP_PROJECT_ID >/dev/null 2>&1 || \
+  gcloud storage buckets create gs://{{bucket}} \
+    --project=$GCP_PROJECT_ID \
+    --location=$GCP_REGION \
+    --uniform-bucket-level-access
+
+  gcloud storage buckets update gs://{{bucket}} \
+    --project=$GCP_PROJECT_ID \
+    --versioning >/dev/null 2>&1 || true
+
+  terraform -chdir={{bootstrap_dir}} init \
+    -backend-config="bucket={{bucket}}"
+
+  terraform -chdir={{bootstrap_dir}} apply -auto-approve \
+    -var="project_id=$GCP_PROJECT_ID" \
+    -var="region=$GCP_REGION"
+
+# Delete all GCP resources
+bootstrap-destroy:
+  terraform -chdir={{bootstrap_dir}} destroy -auto-approve \
+    -var="project_id=$GCP_PROJECT_ID" \
+    -var="region=$GCP_REGION"
+
+# Create ArgoCD and deploy App
+argo:
+  gcloud storage buckets describe gs://{{bucket}} \
+    --project=$GCP_PROJECT_ID >/dev/null 2>&1 || \
+  gcloud storage buckets create gs://{{bucket}} \
+    --project=$GCP_PROJECT_ID \
+    --location=$GCP_REGION \
+    --uniform-bucket-level-access
+  just render
+  terraform -chdir={{bootstrap_dir}} output -raw cluster_name > /tmp/cluster_name
+  gcloud container clusters get-credentials $(cat /tmp/cluster_name) \
+    --zone=$GCP_REGION-a \
+    --project=$GCP_PROJECT_ID
+  helm repo add argo https://argoproj.github.io/argo-helm
+  helm repo update
+  helm upgrade --install argocd argo/argo-cd \
+    -n argocd \
+    --create-namespace \
+    -f gitops/rendered/argocd-values.yaml \
+    --timeout 15m \
+    --wait
+  kubectl apply -f gitops/app.yaml
+
+# Forward ArgoCD to localhost
+argocd-forward:
+  @echo "Argo CD: https://localhost:8080"
+  @echo "Username: admin"
+  @echo "Password: $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)"
+  kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Destroy ArgoCD and GKE cluster
+argo-destroy:
+  terraform -chdir={{bootstrap_dir}} output -raw cluster_name > /tmp/cluster_name
+  gcloud container clusters get-credentials $(cat /tmp/cluster_name) \
+    --zone=$GCP_REGION-a \
+    --project=$GCP_PROJECT_ID
+  helm uninstall argocd -n argocd || true
+  kubectl delete namespace argocd || true
+
+# Render the Kubernetes manifests with environment variables
+render:
+  mkdir -p gitops/rendered
+  terraform -chdir={{bootstrap_dir}} output -raw mongo_private_ip > /tmp/mongo_ip
+  MONGO_PRIVATE_IP=$(cat /tmp/mongo_ip) \
+  DOMAIN="${APP_DOMAIN:-}" \
+  IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/wiz-app/app:latest" \
+  MONGO_USERNAME="$MONGO_USERNAME" \
+  MONGO_PASSWORD="$MONGO_PASSWORD" \
+  MONGO_DB="$MONGO_DB" \
+  ARGOCD_HOSTNAME="${ARGOCD_HOSTNAME:-}" \
+  GOOGLE_OIDC_CLIENT_ID="${GOOGLE_OIDC_CLIENT_ID:-}" \
+  GOOGLE_OIDC_CLIENT_SECRET="${GOOGLE_OIDC_CLIENT_SECRET:-}" \
+  GOOGLE_WORKSPACE_DOMAIN="${GOOGLE_WORKSPACE_DOMAIN:-}" \
+  ARGOCD_ADMIN_GROUP="${ARGOCD_ADMIN_GROUP:-}" \
+  sh -c ' \
+    envsubst < gitops/templates/deployment.yaml.tpl > gitops/rendered/deployment.yaml && \
+    envsubst < gitops/templates/ingress.yaml.tpl > gitops/rendered/ingress.yaml && \
+    envsubst < gitops/templates/secret.yaml.tpl > gitops/rendered/secret.yaml && \
+    envsubst < gitops/templates/values.yaml.tpl > gitops/rendered/argocd-values.yaml && \
+    echo "Rendered manifests written to gitops/rendered/"'
