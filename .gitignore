@@ -53,5 +53,7 @@ attack-output/
 !.vscode/settings.json
 
 # ── Node (app/) ───────────────────────────────────────────────────────────────
+!app/package.json
+!app/package-lock.json
 app/node_modules/
 app/npm-debug.log*
