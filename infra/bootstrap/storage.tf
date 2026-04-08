@@ -24,6 +24,11 @@ resource "google_storage_bucket" "backup_access_logs" {
   force_destroy = true
 
   uniform_bucket_level_access = true
+
+  logging {
+    log_bucket        = "${local.bucket_name}-logs"
+    log_object_prefix = "self/"
+  }
 }
 
 resource "google_storage_bucket_iam_member" "public_read" {
