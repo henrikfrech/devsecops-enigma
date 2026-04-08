@@ -33,6 +33,8 @@ resource "google_container_cluster" "gke" {
   logging_service    = "logging.googleapis.com/kubernetes"
   monitoring_service = "monitoring.googleapis.com/kubernetes"
 
+  # trivy:ignore:GCP-0053
+  # Intentional for exercise: control plane CIDR is open to demonstrate attack surface findings.
   master_authorized_networks_config {
     cidr_blocks {
       cidr_block   = "0.0.0.0/0"
@@ -57,6 +59,8 @@ resource "google_container_node_pool" "primary_nodes" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
 
+    # trivy:ignore:GCP-0048
+    # Intentional for exercise: legacy metadata endpoint remains enabled to demonstrate hardening gaps.
     metadata = {
       disable-legacy-endpoints = "false"
     }

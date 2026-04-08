@@ -27,12 +27,16 @@ resource "google_storage_bucket" "backup_access_logs" {
 }
 
 resource "google_storage_bucket_iam_member" "public_read" {
+  # trivy:ignore:GCP-0001
+  # Intentional for exercise: public object read is required to demonstrate storage exposure.
   bucket = google_storage_bucket.backup.name
   role   = "roles/storage.objectViewer"
   member = "allUsers"
 }
 
 resource "google_storage_bucket_iam_member" "public_list" {
+  # trivy:ignore:GCP-0001
+  # Intentional for exercise: public listing is required for the misconfiguration scenario.
   bucket = google_storage_bucket.backup.name
   role   = "roles/storage.legacyBucketReader"
   member = "allUsers"

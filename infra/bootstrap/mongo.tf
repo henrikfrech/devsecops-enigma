@@ -42,6 +42,8 @@ resource "google_compute_instance" "mongo_vm" {
 
   network_interface {
     subnetwork = google_compute_subnetwork.subnet.id
+    # trivy:ignore:GCP-0031
+    # Intentional for exercise: VM is publicly reachable over SSH for attack-path demonstration.
     access_config {}
   }
 
