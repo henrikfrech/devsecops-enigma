@@ -45,36 +45,63 @@ jobs:
 
   terraform-render:
     needs: [terraform-validate, iac-scan]
-    if: ${{ secrets.GCP_WIF_PROVIDER != '' && secrets.GCP_TERRAFORM_SA != '' && secrets.GCP_PROJECT_ID != '' && secrets.GCP_REGION != '' }}
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check required GCP secrets
+        id: check-secrets
+        env:
+          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          GCP_TERRAFORM_SA: ${{ secrets.GCP_TERRAFORM_SA }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          missing=0
+          for v in GCP_WIF_PROVIDER GCP_TERRAFORM_SA GCP_PROJECT_ID GCP_REGION; do
+            if [ -z "${!v}" ]; then
+              echo "Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: hashicorp/setup-terraform@v3
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
 
       - name: Authenticate to GCP
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_TERRAFORM_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
 
       - name: Terraform Init (for outputs)
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: terraform -chdir=infra/bootstrap init
 
       - name: Get Terraform outputs
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         id: tf
         run: |
           terraform -chdir=infra/bootstrap output -json > tf.json
           echo "MONGO_PRIVATE_IP=$(jq -r .mongo_private_ip.value tf.json)" >> $GITHUB_ENV
 
       - name: Set image
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: |
           echo "IMAGE=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest" >> $GITHUB_ENV
 
       - name: Render manifests
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: |
           export MONGO_PRIVATE_IP=$MONGO_PRIVATE_IP
           export DOMAIN=${{ secrets.APP_DOMAIN }}
@@ -84,3 +111,8 @@ jobs:
 
           envsubst < gitops/templates/secret.yaml.tpl > gitops/rendered/secret.yaml
           envsubst < gitops/templates/deployment.yaml.tpl > gitops/rendered/deployment.yaml
+
+      - name: Skip terraform render when secrets are unavailable
+        if: ${{ steps.check-secrets.outputs.ready != 'true' }}
+        run: |
+          echo "Skipping terraform-render: required GCP secrets are not available in this workflow context."

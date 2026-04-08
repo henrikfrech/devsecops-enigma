@@ -50,24 +50,48 @@ jobs:
 
   build-and-push:
     needs: [app-security-preflight]
-    if: ${{ secrets.GCP_WIF_PROVIDER != '' && secrets.GCP_ARTIFACT_SA != '' && secrets.GCP_PROJECT_ID != '' && secrets.GCP_REGION != '' }}
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check required GCP secrets
+        id: check-secrets
+        env:
+          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          GCP_ARTIFACT_SA: ${{ secrets.GCP_ARTIFACT_SA }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+        run: |
+          missing=0
+          for v in GCP_WIF_PROVIDER GCP_ARTIFACT_SA GCP_PROJECT_ID GCP_REGION; do
+            if [ -z "${!v}" ]; then
+              echo "Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Authenticate to GCP
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_ARTIFACT_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
 
       - name: Configure Docker auth
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Build image
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: |
           docker build \
             -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }} \
@@ -75,6 +99,7 @@ jobs:
             ./app
 
       - name: Generate SBOM (Syft)
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         uses: anchore/sbom-action@v0
         with:
           image: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
@@ -82,6 +107,7 @@ jobs:
           output-file: sbom.spdx.json
 
       - name: Upload SBOM artifact
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: app-sbom-${{ github.sha }}
@@ -89,6 +115,7 @@ jobs:
           if-no-files-found: error
 
       - name: Trivy image scan
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
@@ -97,10 +124,12 @@ jobs:
           exit-code: 1
 
       - name: Push image
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: |
           docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
           docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest
       - name: Get Terraform outputs
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         id: tf
         run: |
           cd infra
@@ -108,6 +137,7 @@ jobs:
           echo "mongo_ip=$(jq -r .mongo_private_ip.value tf.json)" >> $GITHUB_OUTPUT
 
       - name: Render manifests
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: |
           export MONGO_PRIVATE_IP=${{ steps.tf.outputs.mongo_ip }}
           export DOMAIN=${{ secrets.APP_DOMAIN }}
@@ -118,3 +148,8 @@ jobs:
 
           envsubst < gitops/templates/secret.yaml.tpl > gitops/rendered/secret.yaml
           envsubst < gitops/templates/deployment.yaml.tpl > gitops/rendered/deployment.yaml
+
+      - name: Skip build-and-push when secrets are unavailable
+        if: ${{ steps.check-secrets.outputs.ready != 'true' }}
+        run: |
+          echo "Skipping build-and-push: required GCP secrets are not available in this workflow context."
