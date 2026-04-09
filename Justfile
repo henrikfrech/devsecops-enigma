@@ -135,11 +135,15 @@ argo:
   # Apply Argo Application
   kubectl apply -f gitops/app.yaml
 
-argocd-forward:
-  @echo "Argo CD: https://localhost:8080"
+# Forward Argo CD (https://localhost:8080) and app (http://localhost:3000)
+forward:
+  @echo "Argo CD: http://localhost:8080"
+  @echo "Wiz App: http://localhost:3000"
   @echo "Username: admin"
-  @echo "Password: $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)"
-  kubectl port-forward svc/argocd-server -n argocd 8080:443
+  @kubectl -n argocd get secret argocd-initial-admin-secret \
+    -o jsonpath='{.data.password}' | base64 -d | xargs -I{} echo "Password: {}"
+  kubectl -n argocd port-forward svc/argocd-server 8080:8080 &
+  kubectl -n wiz-app port-forward svc/wiz-app 3000:80
 
 # Destroy ArgoCD and GKE cluster
 argo-destroy:
@@ -165,12 +169,14 @@ render:
   MONGO_USERNAME="$MONGO_USERNAME" \
   MONGO_PASSWORD="$MONGO_PASSWORD" \
   MONGO_DB="$MONGO_DB" \
-  ARGOCD_HOSTNAME="${ARGOCD_HOSTNAME:-}" \
+  ARGOCD_DOMAIN="$(echo "${ARGOCD_HOSTNAME:-argocd.local}" | sed -E 's#^https?://##; s#/.*$##')" \
+  ARGOCD_URL="$(h="${ARGOCD_HOSTNAME:-argocd.local}"; if [[ "$h" == http://* || "$h" == https://* ]]; then echo "${h%/}"; else echo "https://$h"; fi)" \
   GOOGLE_OIDC_CLIENT_ID="${GOOGLE_OIDC_CLIENT_ID:-}" \
   GOOGLE_OIDC_CLIENT_SECRET="${GOOGLE_OIDC_CLIENT_SECRET:-}" \
   GOOGLE_WORKSPACE_DOMAIN="${GOOGLE_WORKSPACE_DOMAIN:-}" \
   ARGOCD_ADMIN_GROUP="${ARGOCD_ADMIN_GROUP:-}" \
-  sh -c ' \
+  DEX_CLIENT_SECRET_REF='$dex.google.clientSecret' \
+  bash -c ' \
     envsubst < gitops/templates/deployment.yaml.tpl > gitops/rendered/deployment.yaml && \
     envsubst < gitops/templates/ingress.yaml.tpl > gitops/rendered/ingress.yaml && \
     envsubst < gitops/templates/secret.yaml.tpl > gitops/rendered/secret.yaml && \

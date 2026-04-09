@@ -1,12 +1,14 @@
 global:
-  domain: argocd.local
+  domain: localhost:8080
+
+dex:
+  enabled: true
 
 configs:
   params:
-    server:
-      insecure: true
+    server.insecure: "true"
   cm:
-    url: https://argocd.local
+    url: http://localhost:8080
     dex.config: |
       connectors:
         - type: oidc
@@ -14,15 +16,11 @@ configs:
           name: Google
           config:
             issuer: https://accounts.google.com
-            clientID: 521508938945-dj28j3b88mgc2et8tegcvt0pt4chq4kf.apps.googleusercontent.com
-            clientSecret: .google.clientSecret
-            hostedDomains:
-              - https://project-b4952354-c0d7-4e0a-a90.firebaseapp.com/__/auth/handler
-
+            clientID: 521508938945-a3uo1ujb2du8s8ps113tej9g2719elpu.apps.googleusercontent.com
+            clientSecret: $dex.google.clientSecret
+            redirectURI: http://localhost:8080/api/dex/callback
   rbac:
-    policy.default: role:readonly
-    policy.csv: |
-      g, argocd-admins@example.com, role:admin
+    policy.default: role:admin
 
 server:
   service:

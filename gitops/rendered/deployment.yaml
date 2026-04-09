@@ -27,7 +27,14 @@ spec:
           ports:
             - containerPort: 3000
           env:
+            - name: PORT
+              value: "3000"
             - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MONGO_URI
+            - name: MONGODB_URI
               valueFrom:
                 secretKeyRef:
                   name: app-secrets

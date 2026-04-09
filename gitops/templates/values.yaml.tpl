@@ -1,12 +1,14 @@
 global:
-  domain: ${ARGOCD_HOSTNAME}
+  domain: localhost:8080
+
+dex:
+  enabled: true
 
 configs:
   params:
-    server:
-      insecure: true
+    server.insecure: "true"
   cm:
-    url: https://${ARGOCD_HOSTNAME}
+    url: http://localhost:8080
     dex.config: |
       connectors:
         - type: oidc
@@ -15,14 +17,10 @@ configs:
           config:
             issuer: https://accounts.google.com
             clientID: ${GOOGLE_OIDC_CLIENT_ID}
-            clientSecret: $dex.google.clientSecret
-            hostedDomains:
-              - ${GOOGLE_WORKSPACE_DOMAIN}
-
+            clientSecret: ${GOOGLE_OIDC_CLIENT_SECRET}
+            redirectURI: http://localhost:8080/api/dex/callback
   rbac:
-    policy.default: role:readonly
-    policy.csv: |
-      g, ${ARGOCD_ADMIN_GROUP}, role:admin
+    policy.default: role:admin
 
 server:
   service:
