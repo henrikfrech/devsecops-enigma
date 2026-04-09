@@ -1,4 +1,10 @@
 # Ignore legacy exercise files from Semgrep blocking checks.
 # This keeps the upstream Tasky code unchanged for the lab.
-gitops/tasky/controllers/userController.go
-gitops/tasky/assets/js/login.js
+/gitops/tasky/controllers/userController.go
+**/gitops/tasky/controllers/userController.go
+
+/gitops/tasky/assets/js/login.js
+**/gitops/tasky/assets/js/login.js
+
+/gitops/tasky/assets/js/script.js
+**/gitops/tasky/assets/js/script.js
