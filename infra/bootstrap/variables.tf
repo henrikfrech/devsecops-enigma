@@ -7,13 +7,13 @@ variable "project_id" {
 variable "region" {
   description = "GCP region"
   type        = string
-  default     = "europe-west3"
+  default     = "europe-west1"
 }
 
 variable "zone" {
   description = "Primary GCP zone"
   type        = string
-  default     = "europe-west3-a"
+  default     = "europe-west1-a"
 }
 
 variable "cluster_name" {
