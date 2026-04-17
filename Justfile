@@ -142,8 +142,8 @@ forward:
   @echo "Username: admin"
   @kubectl -n argocd get secret argocd-initial-admin-secret \
     -o jsonpath='{.data.password}' | base64 -d | xargs -I{} echo "Password: {}"
-  kubectl -n argocd port-forward svc/argocd-server 8080:8080 &
-  kubectl -n wiz-app port-forward svc/wiz-app 3000:80
+  kubectl -n argocd port-forward svc/argocd-server 8080:80 &
+  POD=$(kubectl -n wiz-app get pod -l app=wiz-app -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | awk '{print $1}'); [[ -n "$POD" ]] || { echo "No running pod found in wiz-app namespace"; exit 1; }; kubectl -n wiz-app port-forward pod/$POD 3000:3000
 
 # Destroy ArgoCD and GKE cluster
 argo-destroy:
