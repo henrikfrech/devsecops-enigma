@@ -186,6 +186,8 @@ export GCP_ZONE="${GCP_REGION}-a"
 gcloud auth login
 gcloud config set project "$GCP_PROJECT_ID"
 gcloud auth application-default login
+
+
 ```
 
 ### 2. Enable required APIs
