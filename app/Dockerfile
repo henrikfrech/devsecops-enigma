@@ -6,7 +6,7 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 COPY index.js ./
-RUN echo "Henrik Frech" > /app/wizexercise.txt
+RUN echo "Henrik Frech hello" > /app/wizexercise.txt
 
 EXPOSE 3000
 CMD ["npm", "start"]
