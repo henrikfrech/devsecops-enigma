@@ -98,7 +98,15 @@ jobs:
       - name: Set image
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: |
-          echo "IMAGE=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest" >> $GITHUB_ENV
+          ARTIFACT_REPO=$(terraform -chdir=infra/bootstrap output -raw artifact_registry_repo)
+          ARTIFACT_REGION=$(echo "$ARTIFACT_REPO" | awk -F'/' '{for(i=1;i<=NF;i++) if($i=="locations"){print $(i+1); exit}}')
+
+          if [ -z "$ARTIFACT_REGION" ]; then
+            echo "Could not derive Artifact Registry region from output: $ARTIFACT_REPO"
+            exit 1
+          fi
+
+          echo "IMAGE=${ARTIFACT_REGION}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest" >> "$GITHUB_ENV"
 
       - name: Render manifests
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}

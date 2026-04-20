@@ -16,57 +16,58 @@ auth:
 
 # Import all existing GCP resources back into Terraform state
 import-bootstrap:
-  terraform -chdir={{bootstrap_dir}} init
+  terraform -chdir={{bootstrap_dir}} init -reconfigure \
+    -backend-config="bucket={{bucket}}"
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_compute_network.vpc \
     projects/$GCP_PROJECT_ID/global/networks/wiz-vpc || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_compute_subnetwork.subnet \
     projects/$GCP_PROJECT_ID/regions/$GCP_REGION/subnetworks/wiz-subnet || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_compute_firewall.allow_ssh_public \
     projects/$GCP_PROJECT_ID/global/firewalls/allow-ssh-public || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_compute_firewall.allow_mongo_from_gke \
     projects/$GCP_PROJECT_ID/global/firewalls/allow-mongo-from-gke || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_service_account.mongo_vm \
     projects/$GCP_PROJECT_ID/serviceAccounts/mongo-vm-sa@$GCP_PROJECT_ID.iam.gserviceaccount.com || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_artifact_registry_repository.docker_repo \
     projects/$GCP_PROJECT_ID/locations/$GCP_REGION/repositories/wiz-app || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_storage_bucket.backup \
     $GCP_PROJECT_ID-mongo-backups || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_compute_instance.mongo_vm \
-    projects/$GCP_PROJECT_ID/zones/$GCP_REGION-a/instances/mongo-vm || true
+    projects/$GCP_PROJECT_ID/zones/${GCP_ZONE:-$GCP_REGION-b}/instances/mongo-vm || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_container_cluster.gke \
-    projects/$GCP_PROJECT_ID/locations/$GCP_REGION-a/clusters/wiz-gke || true
+    projects/$GCP_PROJECT_ID/locations/${GCP_ZONE:-$GCP_REGION-b}/clusters/wiz-gke || true
 
   terraform -chdir={{bootstrap_dir}} import \
-    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" \
+    -var="project_id=$GCP_PROJECT_ID" -var="region=$GCP_REGION" -var="zone=${GCP_ZONE:-$GCP_REGION-b}" \
     google_container_node_pool.primary_nodes \
-    projects/$GCP_PROJECT_ID/locations/$GCP_REGION-a/clusters/wiz-gke/nodePools/primary-node-pool || true
+    projects/$GCP_PROJECT_ID/locations/${GCP_ZONE:-$GCP_REGION-b}/clusters/wiz-gke/nodePools/primary-node-pool || true
 
 # Bootstrap GCP Infra
 bootstrap:
@@ -81,18 +82,20 @@ bootstrap:
     --project=$GCP_PROJECT_ID \
     --versioning >/dev/null 2>&1 || true
 
-  terraform -chdir={{bootstrap_dir}} init \
+  terraform -chdir={{bootstrap_dir}} init -reconfigure \
     -backend-config="bucket={{bucket}}"
 
   terraform -chdir={{bootstrap_dir}} apply -auto-approve \
     -var="project_id=$GCP_PROJECT_ID" \
-    -var="region=$GCP_REGION"
+    -var="region=$GCP_REGION" \
+    -var="zone=${GCP_ZONE:-$GCP_REGION-b}"
 
 # Delete all GCP resources
 bootstrap-destroy:
   terraform -chdir={{bootstrap_dir}} destroy -auto-approve \
     -var="project_id=$GCP_PROJECT_ID" \
-    -var="region=$GCP_REGION"
+    -var="region=$GCP_REGION" \
+    -var="zone=${GCP_ZONE:-$GCP_REGION-b}"
 
 # Create ArgoCD and deploy App
 argo:
@@ -105,7 +108,7 @@ argo:
   just render
   terraform -chdir={{bootstrap_dir}} output -raw cluster_name > /tmp/cluster_name
   gcloud container clusters get-credentials $(cat /tmp/cluster_name) \
-    --zone=$GCP_REGION-a \
+    --zone=${GCP_ZONE:-$GCP_REGION-b} \
     --project=$GCP_PROJECT_ID
   helm repo add argo https://argoproj.github.io/argo-helm
   helm repo update
@@ -149,7 +152,7 @@ forward:
 argo-destroy:
   terraform -chdir={{bootstrap_dir}} output -raw cluster_name > /tmp/cluster_name
   gcloud container clusters get-credentials $(cat /tmp/cluster_name) \
-    --zone=$GCP_REGION-a \
+    --zone=${GCP_ZONE:-$GCP_REGION-b} \
     --project=$GCP_PROJECT_ID
   helm uninstall argocd -n argocd || true
   kubectl delete namespace argocd || true
@@ -163,9 +166,10 @@ render:
   cp gitops/base/rbac.yaml gitops/rendered/
   cp gitops/base/service.yaml gitops/rendered/
   terraform -chdir={{bootstrap_dir}} output -raw mongo_private_ip > /tmp/mongo_ip
+  terraform -chdir={{bootstrap_dir}} output -raw cluster_region > /tmp/cluster_region
   MONGO_PRIVATE_IP=$(cat /tmp/mongo_ip) \
   DOMAIN="${APP_DOMAIN:-}" \
-  IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/wiz-app/app:latest" \
+  IMAGE="$(cat /tmp/cluster_region)-docker.pkg.dev/$GCP_PROJECT_ID/wiz-app/app:latest" \
   MONGO_USERNAME="$MONGO_USERNAME" \
   MONGO_PASSWORD="$MONGO_PASSWORD" \
   MONGO_DB="$MONGO_DB" \

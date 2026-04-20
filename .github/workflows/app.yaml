@@ -86,23 +86,38 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}
 
+      - name: Detect Artifact Registry region
+        if: ${{ steps.check-secrets.outputs.ready == 'true' }}
+        run: |
+          ARTIFACT_REGION=$(gcloud artifacts repositories list \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --format='value(location)' \
+            --filter='name~"/repositories/wiz-app$"' | head -n1)
+
+          if [ -z "$ARTIFACT_REGION" ]; then
+            echo "Could not detect Artifact Registry region for repository 'wiz-app'"
+            exit 1
+          fi
+
+          echo "ARTIFACT_REGION=$ARTIFACT_REGION" >> "$GITHUB_ENV"
+
       - name: Configure Docker auth
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}
-        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+        run: gcloud auth configure-docker ${{ env.ARTIFACT_REGION }}-docker.pkg.dev --quiet
 
       - name: Build image
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: |
           docker build \
-            -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }} \
-            -t ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest \
+            -t ${{ env.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }} \
+            -t ${{ env.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest \
             ./app
 
       - name: Generate SBOM (Syft)
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
+          image: ${{ env.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
           format: spdx-json
           output-file: sbom.spdx.json
 
@@ -118,7 +133,7 @@ jobs:
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         uses: aquasecurity/trivy-action@v0.35.0
         with:
-          image-ref: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
+          image-ref: ${{ env.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
           format: table
           severity: HIGH,CRITICAL
           exit-code: 1
@@ -126,8 +141,8 @@ jobs:
       - name: Push image
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         run: |
-          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
-          docker push ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest
+          docker push ${{ env.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
+          docker push ${{ env.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:latest
       - name: Get Terraform outputs
         if: ${{ steps.check-secrets.outputs.ready == 'true' }}
         id: tf
@@ -141,7 +156,7 @@ jobs:
         run: |
           export MONGO_PRIVATE_IP=${{ steps.tf.outputs.mongo_ip }}
           export DOMAIN=${{ secrets.APP_DOMAIN }}
-          export IMAGE=${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
+          export IMAGE=${{ env.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/wiz-app/app:${{ github.sha }}
           export MONGO_USERNAME=${{ secrets.MONGO_USERNAME }}
           export MONGO_PASSWORD=${{ secrets.MONGO_PASSWORD }}
           export MONGO_DB=${{ secrets.MONGO_DB }}

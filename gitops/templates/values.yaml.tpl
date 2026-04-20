@@ -17,7 +17,7 @@ configs:
           config:
             issuer: https://accounts.google.com
             clientID: ${GOOGLE_OIDC_CLIENT_ID}
-            clientSecret: ${GOOGLE_OIDC_CLIENT_SECRET}
+            clientSecret: ${DEX_CLIENT_SECRET_REF}
             redirectURI: http://localhost:8080/api/dex/callback
   rbac:
     policy.default: role:admin

@@ -1,19 +1,19 @@
 variable "project_id" {
   description = "GCP project ID"
   type        = string
-  default     = "project-b4952354-c0d7-4e0a-a90"
+  default     = "clgcporg10-193"
 }
 
 variable "region" {
   description = "GCP region"
   type        = string
-  default     = "europe-west1"
+  default     = "europe-west3"
 }
 
 variable "zone" {
   description = "Primary GCP zone"
   type        = string
-  default     = "europe-west1-a"
+  default     = "europe-west3-a"
 }
 
 variable "cluster_name" {

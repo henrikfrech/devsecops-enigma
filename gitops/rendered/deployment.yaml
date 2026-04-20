@@ -20,10 +20,17 @@ spec:
       serviceAccountName: wiz-app
       containers:
         - name: app
-          image: europe-west1-docker.pkg.dev/project-b4952354-c0d7-4e0a-a90/wiz-app/app:latest
+          image: europe-west1-docker.pkg.dev/clgcporg10-193/wiz-app/app:latest
           imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
           ports:
             - containerPort: 3000
           env:

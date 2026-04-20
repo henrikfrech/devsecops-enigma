@@ -181,7 +181,7 @@ Use this section as a quick reference when you want to operate the environment m
 ```bash
 export GCP_PROJECT_ID="project-b4952354-c0d7-4e0a-a90"
 export GCP_REGION="europe-west1"
-export GCP_ZONE="${GCP_REGION}-a"
+export GCP_ZONE="europe-west1-b"
 
 gcloud auth login
 gcloud config set project "$GCP_PROJECT_ID"
